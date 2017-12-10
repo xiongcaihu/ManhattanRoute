@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+    <link href="https://cdn.bootcss.com/normalize/7.0.0/normalize.min.css" rel="stylesheet">
+    <style>
+        .son1,
+        .son2 {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border: 1px solid;
+        }
+
+        .son2 {
+            left: 500px;
+            top: 100px;
+        }
+
+        .son1 {
+            left: 200px;
+            top: 400px;
+            background-color: red;
+        }
+
+        #container {
+            position: absolute;
+            z-index: 9999999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            box-sizing: border-box;
+            height: 800px;
+            border: 1px solid;
+        }
+
+        .main {
+            position: relative;
+            top: 100px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main">
+        <svg xmlns="http://www.w3.org/2000/svg" id="container" version="1.1"></svg>
+        <div class="son1"></div>
+        <div class="son2"></div>
+    </div>
+    <button type="" onclick="next()">连线</button>
+    <button type="" onclick="debug1()">调试</button>
+    <button type="" onclick="reset()">重置</button>
+</body>
+<script src="https://cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+<script src="https://cdn.bootcss.com/vue/2.4.4/vue.js"></script>
+<script src="https://cdn.bootcss.com/lodash.js/4.17.4/lodash.js"></script>
+<script src="https://cdn.bootcss.com/d3/4.12.0/d3.min.js"></script>
+<script>
+    // const minDistance = 50;
+    const stepDistance = 30; // 最小运动距离
+
+    function makeLineBetweenDivs(startPos, endPos) {
+        console.dir(startPos);
+        console.dir(endPos);
+        let minPoints = findMinPoints(startPos, endPos);
+        // 检测最小路径有没有冲突
+        checkCollision(minPoints, startPos.divInfo, endPos.divInfo);
+        // 合并点
+        uniqPoints(minPoints, startPos.divInfo, endPos.divInfo);
+        console.dir(minPoints);
+        console.log('-----debug-----');
+        console.dir(JSON.stringify({
+            startPos: minPoints[0],
+            endPos: minPoints[minPoints.length - 1]
+        }))
+        drawLinesTemp(minPoints);
+    }
+
+    function drawLinesTemp(points) {
+        $('#container').html('');
+        let svgContainer = $('#container')[0];
+
+        let line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+
+        let attrPoints = '';
+        for (let i = 0; i < points.length; i++) {
+            let point = points[i];
+            attrPoints += `${point.x},${point.y} `;
+        }
+
+        attrPoints = attrPoints.substring(0, attrPoints.length - 1);
+
+        line.setAttribute('points', attrPoints);
+        line.setAttribute('style', 'fill:transparent;stroke:rgb(99,99,99);stroke-width:2');
+
+        svgContainer.appendChild(line);
+    }
+
+    // 首先找出最短的直角路径
+    function findMinPoints(startPos, endPos, points = []) {
+        let direction = startPos.direction;
+        let endX = endPos.x;
+        let endY = endPos.y;
+        let startX = startPos.x;
+        let startY = startPos.y;
+
+        if (startPos.x == endPos.x && startPos.y == endPos.y) {
+            points.push(_.cloneDeep(endPos));
+            return points;
+        }
+
+        points.push(startPos);
+
+        let newPos;
+        switch (direction) {
+            case 'up':
+                if (false && Math.abs(startY - 1 - endY) > Math.abs(startY - endY)) { // 表示远离，那么只要移动一个步长
+                    newPos = _.merge({}, startPos, {
+                        x: startX,
+                        y: (startY - stepDistance) < 0 ? 0 : (startY - stepDistance)
+                    })
+
+                } else {
+                    newPos = _.merge({}, startPos, {
+                        x: startX,
+                        y: endY
+                    })
+                }
+                break;
+            case 'down':
+                if (false && Math.abs(startY + 1 - endY) > Math.abs(startY - endY)) { // 表示远离，那么只要移动一个步长
+                    newPos = _.merge({}, startPos, {
+                        x: startX,
+                        y: (startY + stepDistance) < 0 ? 0 : (startY + stepDistance)
+                    })
+                } else {
+                    newPos = _.merge({}, startPos, {
+                        x: startX,
+                        y: endY
+                    })
+                }
+                break;
+            case 'left':
+                if (false && Math.abs(startX - 1 - endX) > Math.abs(startX - endX)) { // 表示远离，那么只要移动一个步长
+                    newPos = _.merge({}, startPos, {
+                        x: (startX - stepDistance) < 0 ? 0 : (startX - stepDistance),
+                        y: startY
+                    })
+                } else {
+                    newPos = _.merge({}, startPos, {
+                        x: endX,
+                        y: startY
+                    })
+                }
+                break;
+            case 'right':
+                if (false && Math.abs(startX + 1 - endX) > Math.abs(startX - endX)) { // 表示远离，那么只要移动一个步长
+                    newPos = _.merge({}, startPos, {
+                        x: (startX + stepDistance) < 0 ? 0 : (startX + stepDistance),
+                        y: startY
+                    })
+
+                } else {
+                    newPos = _.merge({}, startPos, {
+                        x: endX,
+                        y: startY
+                    })
+                }
+                break;
+        }
+
+        newPos.direction = findDirection(newPos, endPos);
+        return findMinPoints(newPos, endPos, points);
+    }
+
+    function findDirection(startPos, endPos) {
+        if (startPos.direction == 'left' || startPos.direction == 'right') {
+            if (startPos.y < endPos.y) {
+                return 'down';
+            } else {
+                return 'up';
+            }
+        }
+
+        if (startPos.direction == 'up' || startPos.direction == 'down') {
+            if (startPos.x < endPos.x) {
+                return 'right';
+            } else {
+                return 'left';
+            }
+        }
+    }
+
+    function uniqPoints(points, divInfo1, divInfo2) {
+        let index = 1;
+        let endPos = _.cloneDeep(points[points.length - 1]);
+        let startPos = _.cloneDeep(points[0]);
+
+        let count = 100;
+
+        while (count-- > 0) {
+            if (points[0].x != startPos.x || points[0].y != startPos.y) {
+                points.unshift(_.cloneDeep(startPos));
+            }
+            if (points[points.length - 1].x != endPos.x || points[points.length - 1].y != endPos.y) {
+                points.push(_.cloneDeep(endPos));
+            }
+            let point1 = points[index];
+            let point2 = points[index + 1];
+            let point3 = points[index + 2];
+
+            if (point1 && point2 && point3 && points[index + 3] && points[index - 1]) {
+                // 先求第四个点
+                let p4x = 0;
+                let p4y = 0;
+                let p1x = point1.x,
+                    p2x = point2.x,
+                    p3x = point3.x,
+                    p1y = point1.y,
+                    p2y = point2.y,
+                    p3y = point3.y;
+
+                if (p1x == p2x) {
+                    p4x = p3x;
+                }
+                if (p1x == p3x) {
+                    p4x = p2x;
+                }
+                if (p2x == p3x) {
+                    p4x = p1x;
+                }
+
+                if (p1y == p2y) {
+                    p4y = p3y;
+                }
+                if (p1y == p3y) {
+                    p4y = p2y;
+                }
+                if (p2y == p3y) {
+                    p4y = p1y;
+                }
+
+                let point4 = {
+                    x: p4x,
+                    y: p4y
+                }
+
+                if (!checkCollisionBoolean(points[index - 1], point4, divInfo1, divInfo2) && !checkCollisionBoolean(
+                        point4, points[index + 3], divInfo1, divInfo2)) {
+                    points.splice(index, 1);
+                    points.splice(index, 1);
+                    points.splice(index, 1);
+                    points.splice(index, 0, point4);
+                }
+                index++;
+            } else {
+                break;
+            }
+        }
+    }
+
+    function checkCollisionWithDiv(point1, point2, divInfo1) {
+        let x1 = point1.x;
+        let y1 = point1.y;
+        let x2 = point2.x;
+        let y2 = point2.y;
+
+        if (x1 > x2) {
+            let temp = x1;
+            x1 = x2;
+            x2 = temp;
+        }
+
+        if (y1 > y2) {
+            let temp = y1;
+            y1 = y2;
+            y2 = temp;
+        }
+
+        let div1X1 = divInfo1.x;
+        let div1X2 = divInfo1.x + divInfo1.width;
+        let div1Y1 = divInfo1.y;
+        let div1Y2 = divInfo1.y + divInfo1.height;
+
+        if (y1 == y2) {
+            if (!(x2 <= div1X1 || x1 >= div1X2 || y1 < div1Y1 || y1 > div1Y2)) {
+                return true;
+            }
+        } else {
+            if (!(y2 <= div1Y1 || y1 >= div1Y2 || x1 < div1X1 || x1 > div1X2)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function checkCollisionBoolean(point1, point2, divInfo1, divInfo2) {
+        if (checkCollisionWithDiv(point1, point2, divInfo1) || checkCollisionWithDiv(point1, point2, divInfo2)) return true;
+        return false;
+    }
+
+    function checkCollision(points, divInfo1, divInfo2) {
+        let index = 0;
+        let endPos = _.cloneDeep(points[points.length - 1]);
+        let startPos = _.cloneDeep(points[0]);
+
+        let count = 100;
+
+        while (count-- > 0) {
+            if (points[0].x != startPos.x || points[0].y != startPos.y) {
+                points.unshift(_.cloneDeep(startPos));
+            }
+            if (points[points.length - 1].x != endPos.x || points[points.length - 1].y != endPos.y) {
+                points.push(_.cloneDeep(endPos));
+            }
+            drawLinesTemp(points);
+            let point1 = points[index];
+            let point2 = points[index + 1];
+            if (point1 && point2) {
+                let x1 = point1.x;
+                let y1 = point1.y;
+                let x2 = point2.x;
+                let y2 = point2.y;
+
+                if (x1 > x2) {
+                    let temp = x1;
+                    x1 = x2;
+                    x2 = temp;
+                }
+
+                if (y1 > y2) {
+                    let temp = y1;
+                    y1 = y2;
+                    y2 = temp;
+                }
+
+                let div1X1 = divInfo1.x;
+                let div1X2 = divInfo1.x + divInfo1.width;
+                let div1Y1 = divInfo1.y;
+                let div1Y2 = divInfo1.y + divInfo1.height;
+
+                let div2X1 = divInfo2.x;
+                let div2X2 = divInfo2.x + divInfo2.width;
+                let div2Y1 = divInfo2.y;
+                let div2Y2 = divInfo2.y + divInfo2.height;
+
+                if (y1 == y2) {
+                    if (!((x2 <= div1X1 || x1 >= div1X2 || y1 < div1Y1 || y1 > div1Y2) && (x2 <= div2X1 || x1 >= div2X2 ||
+                            y1 < div2Y1 || y1 > div2Y2))) {
+                        let oldPoint1 = _.cloneDeep(point1);
+                        let oldPoint2 = _.cloneDeep(point2);
+                        let oldPoints = _.cloneDeep(points);
+
+                        dealCollision('x', point1, point2, divInfo1, divInfo2, endPos);
+                        if (checkHasOverOtherLine(oldPoints, point1, point2)) {
+                            point1.x = oldPoint1.x;
+                            point1.y = oldPoint1.y;
+                            point2.x = oldPoint2.x;
+                            point2.y = oldPoint2.y;
+                            index++;
+                            continue;
+                        }
+                        index = 0;
+                        continue;
+                    }
+                    index++;
+                } else {
+                    // 判断是否和div垂直相交
+                    if (!((y2 <= div1Y1 || y1 >= div1Y2 || x1 < div1X1 || x1 > div1X2) && (y2 <= div2Y1 || y1 >= div2Y2 ||
+                            x1 < div2X1 || x1 > div2X2))) {
+                        let oldPoint1 = _.cloneDeep(point1);
+                        let oldPoint2 = _.cloneDeep(point2);
+                        let oldPoints = _.cloneDeep(points);
+
+                        dealCollision('y', point1, point2, divInfo1, divInfo2, endPos);
+                        if (checkHasOverOtherLine(oldPoints, point1, point2)) {
+                            point1.x = oldPoint1.x;
+                            point1.y = oldPoint1.y;
+                            point2.x = oldPoint2.x;
+                            point2.y = oldPoint2.y;
+                            index++;
+                            continue;
+                        }
+                        index = 0;
+                        continue;
+                    }
+                    index++;
+                }
+            } else {
+                break;
+            }
+        }
+        if (points[0].x != startPos.x || points[0].y != startPos.y) {
+            points.unshift(_.cloneDeep(startPos));
+        }
+        if (points[points.length - 1].x != endPos.x || points[points.length - 1].y != endPos.y) {
+            points.push(_.cloneDeep(endPos));
+        }
+    }
+
+    /**
+     * 检查当前的线段是否在其他线段上
+     */
+    function checkHasOverOtherLine(points, point1, point2) {
+        let p1x = point1.x,
+            p2x = point2.x,
+            p1y = point1.y,
+            p2y = point2.y;
+        if (p1x > p2x) {
+            let temp = p1x;
+            p1x = p2x;
+            p2x = temp;
+        }
+
+        if (p1y > p2y) {
+            let temp = p1y;
+            p1y = p2y;
+            p2y = temp;
+        }
+
+        for (let i = 0; i < points.length; i++) {
+            let nowP1 = points[i];
+            let nowP2 = points[i + 1];
+
+            if (!(nowP1 && nowP2)) {
+                break;
+            }
+
+            let np1x = nowP1.x,
+                np1y = nowP1.y,
+                np2x = nowP2.x,
+                np2y = nowP2.y;
+
+            if (np1x > np2x) {
+                let temp = np1x;
+                np1x = np2x;
+                np2x = temp;
+            }
+
+            if (np1y > np2y) {
+                let temp = np1y;
+                np1y = np2y;
+                np2y = temp;
+            }
+
+            if (p1x == p2x && np1x == np2x && p1x == np1x) {
+                if (!(p1y > np2y || p2y < np1y)) {
+                    return true;
+                }
+            }
+
+            if (p1y == p2y && np1y == np2y && p1y == np1y) {
+                if (!(p1x > np2x || p2x < np1x)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    function dealCollision(type, point1, point2, divInfo1, divInfo2, endPos) {
+        let x1 = point1.x;
+        let y1 = point1.y;
+        let x2 = point2.x;
+        let y2 = point2.y;
+        let div1X1 = divInfo1.x;
+        let div1X2 = divInfo1.x + divInfo1.width;
+        let div1Y1 = divInfo1.y;
+        let div1Y2 = divInfo1.y + divInfo1.height;
+
+        let div2X1 = divInfo2.x;
+        let div2X2 = divInfo2.x + divInfo2.width;
+        let div2Y1 = divInfo2.y;
+        let div2Y2 = divInfo2.y + divInfo2.height;
+
+        let collisionWidthDiv1 = checkCollisionWithDiv(point1, point2, divInfo1);
+        let collisionWidthDiv2 = checkCollisionWithDiv(point1, point2, divInfo2);
+
+        if (type == 'x') { // 横向相交
+            // 查看是否是贴边
+            if (y1 == div1Y1 || y1 == div2Y1) {
+                point2.y = point1.y = y1 - stepDistance;
+            } else if (y1 == div1Y2 || y1 == div2Y2) {
+                point2.y = point1.y = y1 + stepDistance;
+            } else if (collisionWidthDiv1 && !collisionWidthDiv2) {
+                let targetTopY = div1Y1 - stepDistance;
+                let targetBottomY = div1Y2 + stepDistance;
+                let hasTopCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    y: targetTopY
+                }), _.merge({}, point2, {
+                    y: targetTopY
+                }), divInfo2);
+
+                let hasBottomCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    y: targetBottomY
+                }), _.merge({}, point2, {
+                    y: targetBottomY
+                }), divInfo2);
+
+                if (hasTopCollision && !hasBottomCollision) {
+                    point1.y = point2.y = targetBottomY;
+                } else if (!hasTopCollision && hasBottomCollision) {
+                    point1.y = point2.y = targetTopY;
+                } else if (!hasTopCollision && !hasBottomCollision) {
+                    if (Math.abs(targetTopY - endPos.y) < Math.abs(targetBottomY - endPos.y)) {
+                        point1.y = point2.y = targetTopY;
+                    } else {
+                        point1.y = point2.y = targetBottomY;
+                    }
+                }
+            } else if (!collisionWidthDiv1 && collisionWidthDiv2) {
+                let targetTopY = div2Y1 - stepDistance;
+                let targetBottomY = div2Y2 + stepDistance;
+                let hasTopCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    y: targetTopY
+                }), _.merge({}, point2, {
+                    y: targetTopY
+                }), divInfo1);
+
+                let hasBottomCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    y: targetBottomY
+                }), _.merge({}, point2, {
+                    y: targetBottomY
+                }), divInfo1);
+
+                if (hasTopCollision && !hasBottomCollision) {
+                    point1.y = point2.y = targetBottomY;
+                } else if (!hasTopCollision && hasBottomCollision) {
+                    point1.y = point2.y = targetTopY;
+                } else if (!hasTopCollision && !hasBottomCollision) {
+                    if (Math.abs(targetTopY - endPos.y) < Math.abs(targetBottomY - endPos.y)) {
+                        point1.y = point2.y = targetTopY;
+                    } else {
+                        point1.y = point2.y = targetBottomY;
+                    }
+                }
+            } else if (!collisionWidthDiv1 && !collisionWidthDiv2) {
+
+            } else if (div1Y1 > div2Y2 || div1Y2 < div2Y1) { // 此种情况属于两个div在y轴方向上没有交集
+                if (div1Y1 > div2Y2) {
+                    let distance = Math.abs(div1Y1 - div2Y2) / 2;
+                    point2.y = point1.y = div1Y1 - distance;
+                } else {
+                    let distance = Math.abs(div1Y2 - div2Y1) / 2;
+                    point2.y = point1.y = div1Y2 + distance;
+                }
+            } else { // 表示两个div有交集
+                // 取两个div最上或者最下边再加最小步长的最小值
+                let topDistance = 0;
+                let bottomDistance = 0;
+                let topY = 0;
+                let bottomY = 0;
+                if (div1Y1 < div2Y1) {
+                    topY = div1Y1 - stepDistance;
+                } else {
+                    topY = div2Y1 - stepDistance;
+                }
+                if (div1Y2 > div2Y2) {
+                    bottomY = div1Y2 + stepDistance;
+                } else {
+                    bottomY = div2Y2 + stepDistance;
+                }
+
+                topDistance = Math.abs(topY - point1.y);
+                bottomDistance = Math.abs(bottomY - point1.y);
+
+                if (topDistance < bottomDistance) {
+                    point1.y = point2.y = topY;
+                } else {
+                    point1.y = point2.y = bottomY;
+                }
+            }
+        } else { // 纵向相交
+            if (x1 == div1X1 || x1 == div2X1) {
+                point2.x = point1.x = x1 - stepDistance;
+            } else if (x1 == div1X2 || x1 == div2X2) {
+                point2.x = point1.x = x1 + stepDistance;
+            } else if (collisionWidthDiv1 && !collisionWidthDiv2) {
+                let targetLeftX = div1X1 - stepDistance;
+                let targetRightX = div1X2 + stepDistance;
+                let hasLeftCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    x: targetLeftX
+                }), _.merge({}, point2, {
+                    x: targetLeftX
+                }), divInfo2);
+
+                let hasRightCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    y: targetRightX
+                }), _.merge({}, point2, {
+                    y: targetRightX
+                }), divInfo2);
+
+                if (hasLeftCollision && !hasRightCollision) {
+                    point1.x = point2.x = targetRightX;
+                } else if (!hasLeftCollision && hasRightCollision) {
+                    point1.x = point2.x = targetLeftX;
+                } else if (!hasLeftCollision && !hasRightCollision) {
+                    if (Math.abs(targetLeftX - endPos.x) < Math.abs(targetRightX - endPos.x)) {
+                        point1.x = point2.x = targetLeftX;
+                    } else {
+                        point1.x = point2.x = targetRightX;
+                    }
+                }
+            } else if (!collisionWidthDiv1 && collisionWidthDiv2) {
+                let targetLeftX = div2X1 - stepDistance;
+                let targetRightX = div2X2 + stepDistance;
+                let hasLeftCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    x: targetLeftX
+                }), _.merge({}, point2, {
+                    x: targetLeftX
+                }), divInfo2);
+
+                let hasRightCollision = checkCollisionWithDiv(_.merge({}, point1, {
+                    y: targetRightX
+                }), _.merge({}, point2, {
+                    y: targetRightX
+                }), divInfo2);
+
+                if (hasLeftCollision && !hasRightCollision) {
+                    point1.x = point2.x = targetRightX;
+                } else if (!hasLeftCollision && hasRightCollision) {
+                    point1.x = point2.x = targetLeftX;
+                } else if (!hasLeftCollision && !hasRightCollision) {
+                    if (Math.abs(targetLeftX - endPos.x) < Math.abs(targetRightX - endPos.x)) {
+                        point1.x = point2.x = targetLeftX;
+                    } else {
+                        point1.x = point2.x = targetRightX;
+                    }
+                }
+            } else if (!collisionWidthDiv1 && !collisionWidthDiv2) {
+
+            } else if (div1X1 > div2X2 || div1X2 < div2X1) { // 此种情况属于两个div在x轴方向上没有交集
+                if (div1X1 > div2X2) {
+                    let distance = Math.abs(div1X1 - div2X2) / 2;
+                    point2.x = point1.x = div1X1 - distance;
+                } else {
+                    let distance = Math.abs(div1X2 - div2X1) / 2;
+                    point2.x = point1.x = div2X1 - distance;
+                }
+            } else { // 表示有交集
+                // 取两个div最左或者最右边再加最小步长的最小值
+                let leftDistance = 0;
+                let rightDistance = 0;
+                let leftX = 0;
+                let rightX = 0;
+                if (div1X1 < div2X1) {
+                    leftX = div1X1 - stepDistance;
+                } else {
+                    leftX = div2X1 - stepDistance;
+                }
+                if (div1X2 > div2X2) {
+                    rightX = div1X2 + stepDistance;
+                } else {
+                    rightX = div2X2 + stepDistance;
+                }
+
+                leftDistance = Math.abs(leftX - point1.x);
+                rightDistance = Math.abs(rightX - point1.x);
+
+                if (leftDistance < rightDistance) {
+                    point1.x = point2.x = leftX;
+                } else {
+                    point1.x = point2.x = rightX;
+                }
+            }
+        }
+    }
+
+    function reset() {
+        $('#container').html('');
+
+        $('.son1').css({
+            width: parseInt(Math.random() * 200 + 100),
+            height: parseInt(Math.random() * 200 + 100),
+            left: parseInt(Math.random() * 500 + 1),
+            top: parseInt(Math.random() * 500 + 1)
+        })
+
+        $('.son2').css({
+            width: parseInt(Math.random() * 200 + 100),
+            height: parseInt(Math.random() * 200 + 100),
+            left: parseInt(Math.random() * 500 + 1),
+            top: parseInt(Math.random() * 500 + 1)
+        })
+    }
+
+    function debug1() {
+        $('#container').html('');
+        let points =
+            '{"startPos":{"x":258,"y":242,"direction":"left","divInfo":{"x":258,"y":183,"width":216,"height":118}},"endPos":{"x":348.5,"y":445,"direction":"down","divInfo":{"x":281,"y":211,"width":135,"height":234}}}';
+        points = JSON.parse(points);
+
+        let startPos = points.startPos;
+        let endPos = points.endPos;
+
+        $('.son1').css({
+            width: startPos.divInfo.width,
+            height: startPos.divInfo.height,
+            left: startPos.divInfo.x,
+            top: startPos.divInfo.y
+        })
+
+        $('.son2').css({
+            width: endPos.divInfo.width,
+            height: endPos.divInfo.height,
+            left: endPos.divInfo.x,
+            top: endPos.divInfo.y
+        })
+
+        makeLineBetweenDivs(startPos, endPos);
+    }
+
+    function next() {
+        let pos1Array = [];
+        let pos2Array = [];
+        let directions = ['left', 'right', 'up', 'down'];
+
+        $('#container').html('');
+
+        // makeLineBetweenDivs(makePoint($('.son1'), directions[parseInt(Math.random() * 10 % 4)]), makePoint($('.son2'),
+        //         directions[parseInt(Math.random() * 10 % 4)]),
+        //     pos1Array, pos2Array)
+
+        makeLineBetweenDivs(makePoint($('.son1'), directions[parseInt(Math.random() * 10 % 4)]), makePoint($('.son2'),
+            directions[parseInt(Math.random() * 10 % 4)]))
+
+        // makeLine(pos1Array, pos2Array);
+    }
+
+    function makePoint(div, direction) {
+        let x = div.position().left;
+        let y = div.position().top;
+        let width = div.width();
+        let height = div.height();
+        let divInfo = {
+            x: x,
+            y: y,
+            width: width,
+            height: height
+        }
+
+        if (direction == 'left') {
+            return {
+                x: x,
+                y: y + (height / 2),
+                direction: direction,
+                divInfo: divInfo
+            }
+        }
+
+        if (direction == 'right') {
+            return {
+                x: x + width,
+                y: y + (height / 2),
+                direction: direction,
+                divInfo: divInfo
+            }
+        }
+
+        if (direction == 'down') {
+            return {
+                x: x + (width / 2),
+                y: y + height,
+                direction: direction,
+                divInfo: divInfo
+            }
+        }
+
+        if (direction == 'up') {
+            return {
+                x: x + (width / 2),
+                y: y,
+                direction: direction,
+                divInfo: divInfo
+            }
+        }
+    }
+</script>
+
+</html>
